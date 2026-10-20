@@ -1,0 +1,67 @@
+name: iOS 免费云构建（未签名 ipa）
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+
+jobs:
+  # 第一步：Linux 构建机用 GameCI 镜像跑 Unity，导出 Xcode 工程
+  unity-ios:
+    name: Unity 导出 Xcode 工程
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 本机是中国版 2022.3.48f1c1，GameCI 官方镜像只有国际版 f1，构建前转换版本号
+      - name: 转换编辑器版本号（c1 -> f1）
+        run: sed -i 's/2022\.3\.48f1c1/2022.3.48f1/g' ProjectSettings/ProjectVersion.txt
+
+      - name: Unity 构建（GameCI）
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          targetPlatform: iOS
+          unityVersion: 2022.3.48f1
+
+      - name: 上传 Xcode 工程
+        uses: actions/upload-artifact@v4
+        with:
+          name: XcodeProject
+          path: build/iOS
+
+  # 第二步：macOS 构建机（公开仓库免费）编译 Xcode 工程出未签名 ipa
+  xcode-ios:
+    name: Xcode 编译未签名 ipa
+    needs: unity-ios
+    runs-on: macos-latest
+    steps:
+      - name: 下载 Xcode 工程
+        uses: actions/download-artifact@v4
+        with:
+          name: XcodeProject
+          path: XcodeProject
+
+      - name: 归档（不签名）
+        working-directory: XcodeProject
+        run: |
+          xcodebuild -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath DerivedData \
+            archive -archivePath Build.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: 打包未签名 ipa
+        run: |
+          mkdir Payload
+          cp -r "XcodeProject/Build.xcarchive/Products/Applications/Unity-iPhone.app" Payload/
+          zip -qr FPSGame-iOS-unsigned.ipa Payload
+
+      - name: 上传 ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: FPSGame-iOS-unsigned-ipa
+          path: FPSGame-iOS-unsigned.ipa
