@@ -13,9 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 本机是中国版 2022.3.48f1c1，GameCI 官方镜像只有国际版 f1，构建前转换版本号
+      # 本机是中国版 2022.3.48f1c1，GameCI 官方镜像只有国际版 f1；
+      # 中国版的 revision 哈希与国际版不同，须整行删除让 CI 侧 Unity 自行回填
       - name: 转换编辑器版本号（c1 -> f1）
-        run: sed -i 's/2022\.3\.48f1c1/2022.3.48f1/g' ProjectSettings/ProjectVersion.txt
+        run: sed -i 's/2022\.3\.48f1c1/2022.3.48f1/g; /m_EditorVersionWithRevision/d' ProjectSettings/ProjectVersion.txt
 
       - name: Unity 构建（GameCI）
         uses: game-ci/unity-builder@v4
@@ -24,6 +25,7 @@ jobs:
         with:
           targetPlatform: iOS
           unityVersion: 2022.3.48f1
+          versioning: None  # 版本号取 PlayerSettings 的 bundleVersion，不基于 git 状态（规避 dirty 检查）
 
       - name: 上传 Xcode 工程
         uses: actions/upload-artifact@v4
